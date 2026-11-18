@@ -235,24 +235,25 @@ with st.sidebar:
         st.session_state.conversation_id = selected
         st.rerun()
 
-    st.divider()
-   
-   try:
-    groq_key = st.secrets["GROQ_API_KEY"]
-except Exception:
-    groq_key = os.getenv("GROQ_API_KEY", "")
+       st.divider()
 
-api_key = st.text_input(
-    "Groq API key",
-    value=groq_key,
-    type="password"
-)
+    try:
+        groq_key = st.secrets["GROQ_API_KEY"]
+    except Exception:
+        groq_key = os.getenv("GROQ_API_KEY", "")
+
+    api_key = st.text_input(
+        "Groq API key",
+        value=groq_key,
+        type="password"
+    )
 
     model = st.selectbox(
-    "Groq model",
-    ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
-    index=0
+        "Groq model",
+        ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+        index=0
     )
+
 
     
 toolbar_upload, toolbar_tools = st.columns([4, 1])
