@@ -184,6 +184,34 @@ Question: {question}
     return llm.invoke(prompt).content
 
 
+def document_action(conversation_id: str, action: str, api_key: str, model: str, selected_docs: list[str]) -> str:
+    """Run a document-level operation against the selected indexed files."""
+    store = vector_store(conversation_id)
+    docs = store.get(where={"source": {"$in": selected_docs}}, include=["documents", "metadatas"])
+    pages = [
+        f"[Source: {metadata.get('source', 'document')}]\n{content}"
+        for content, metadata in zip(docs.get("documents") or [], docs.get("metadatas") or [])
+        if content
+    ]
+    if not pages:
+        return "I couldn't find text for the selected documents."
+    context = "\n\n".join(pages)
+    instructions = {
+        "Summarise": "Summarise the selected document(s). Cover the main ideas, key facts, and conclusions. Cite the source filename for each point.",
+        "Compare": "Compare the selected documents. Explain their shared themes and the important differences, citing source filenames. If only one document is selected, explain that at least two are needed.",
+        "Verify": "Check the selected document(s) for factual claims that can be checked against the other selected documents. For each claim, report whether it is supported, contradicted, or not verifiable from these documents, and cite the relevant filenames. Do not use outside knowledge.",
+    }
+    llm = ChatGroq(groq_api_key=api_key, model_name=model, temperature=0.2)
+    prompt = f"""You are a careful document assistant. Use only the supplied document text. Do not invent facts. Be clear when evidence is missing.
+
+Task: {instructions[action]}
+
+Documents:
+{context}
+"""
+    return llm.invoke(prompt).content
+
+
 st.set_page_config(page_title="Groq Document RAG", page_icon="📚", layout="wide")
 st.title("📚 Groq Document RAG Agent")
 st.caption("Upload files, ask grounded questions, and return to saved conversations later.")
@@ -222,12 +250,56 @@ with st.sidebar:
     )
 
     
-uploads = st.file_uploader(
-    "Add documents",
-    type=SUPPORTED_TYPES,
-    accept_multiple_files=True,
-    key=f"uploader_{st.session_state.conversation_id}"
-)
+toolbar_upload, toolbar_tools = st.columns([4, 1])
+with toolbar_upload:
+    uploads = st.file_uploader(
+        "Add documents",
+        type=SUPPORTED_TYPES,
+        accept_multiple_files=True,
+        key=f"uploader_{st.session_state.conversation_id}"
+    )
+
+document_names = saved_document_names(st.session_state.conversation_id)
+with toolbar_tools:
+    st.write("")
+    tools_open = st.button("Document tools", use_container_width=True)
+
+if tools_open:
+    st.session_state.show_document_tools = not st.session_state.get("show_document_tools", False)
+
+if st.session_state.get("show_document_tools", False):
+    with st.container(border=True):
+        st.subheader("Document tools")
+        if not document_names:
+            st.info("Upload and index documents to use these tools.")
+        else:
+            selected_docs = st.multiselect(
+                "Choose documents",
+                document_names,
+                default=document_names,
+                key=f"document_selection_{st.session_state.conversation_id}",
+            )
+            action_cols = st.columns(3)
+            for column, action in zip(action_cols, ("Summarise", "Compare", "Verify")):
+                if column.button(action, key=f"document_action_{action}", use_container_width=True):
+                    if not api_key:
+                        st.error("Add your Groq API key in the sidebar or .env file.")
+                    elif not selected_docs:
+                        st.warning("Choose at least one document.")
+                    else:
+                        progress_label = {
+                            "Summarise": "Summarising selected documents...",
+                            "Compare": "Comparing selected documents...",
+                            "Verify": "Verifying selected documents...",
+                        }[action]
+                        with st.spinner(progress_label):
+                            try:
+                                result = document_action(
+                                    st.session_state.conversation_id, action, api_key, model, selected_docs
+                                )
+                            except Exception as exc:
+                                result = f"I couldn't complete that request: {exc}"
+                        st.markdown(result)
 
 if uploads:
     with st.spinner("Reading and indexing documents..."):
