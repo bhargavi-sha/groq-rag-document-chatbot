@@ -237,9 +237,14 @@ with st.sidebar:
 
     st.divider()
    
-    api_key = st.text_input(
+   try:
+    groq_key = st.secrets["GROQ_API_KEY"]
+except Exception:
+    groq_key = os.getenv("GROQ_API_KEY", "")
+
+api_key = st.text_input(
     "Groq API key",
-    value=os.getenv("GROQ_API_KEY", ""),
+    value=groq_key,
     type="password"
 )
 
